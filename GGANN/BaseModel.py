@@ -128,7 +128,7 @@ class BaseModel(object):
         full_path = os.path.join(self.data_dir, file_name)
 
         print("Loading data from %s" % full_path)
-        with open(full_path, 'r') as f:
+        with open(full_path, 'r',encoding='utf-8') as f:
             data = json.load(f)
 
         restrict = self.args.get("--restrict_data")
@@ -138,7 +138,7 @@ class BaseModel(object):
         # 统计数据中一些信息
         num_fwd_edge_types = 0
         for i, g in enumerate(data):
-            # 图中顶点的ont-hot编码
+            # 图中顶点的ont-hot编码 #Todo  update node encode method
             data[i]['node_features'] = get_ont_hot(g['node_features'])
             # 最大顶点编号
             self.max_num_vertices = max(self.max_num_vertices, max([v for e in g['graph'] for v in [e[0], e[2]]]))

@@ -7,7 +7,7 @@ with open('./valid_idx.json', 'r', encoding='utf-8') as vif:
 train_graphs = []
 valid_graphs = []
 
-for graph_path in glob.glob('../graph/*.graph'):
+for graph_path in glob.glob('./graph/*.graph'):
 
     n = 0
     for path in glob.glob('../data/*/'):
