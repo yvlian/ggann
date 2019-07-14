@@ -244,6 +244,7 @@ class ASTGraph:
         if not self.__graph:
             # get nodes feature one hot
             nodes_feature = []
+            self.__ast_types
             for node in self.__ast_nodes:
                 nodes_feature.append(node['one_hot'])
 

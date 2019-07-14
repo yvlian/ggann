@@ -1,6 +1,6 @@
 from preprocess.ASTOnly2Graph import ASTOnly2Graph
 from glob import glob
-import 
+import json
 
 
 # 仅仅包含ast的graph生成代码
