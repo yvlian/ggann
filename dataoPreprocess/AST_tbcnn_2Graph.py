@@ -8,7 +8,7 @@ import pickle
 
 
 class AST_tbcnn_2Graph:
-    __type_file_path = './ast_types.json'
+    __type_file_path = './data/ast_types.json'
     __ast_file_path = ''
 
     __index = None

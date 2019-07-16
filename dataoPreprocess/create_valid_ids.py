@@ -9,5 +9,5 @@ for graph_path in glob.glob('../graph/*.graph'):
     if random.random() > 0.5:
         ids.append(idx)
 
-with open('./valid_idx.json', 'w', encoding='utf-8') as vf:
+with open('./data/valid_idx.json', 'w', encoding='utf-8') as vf:
     json.dump({"valid_idxs": ids}, vf)

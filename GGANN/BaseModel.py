@@ -36,6 +36,8 @@ class BaseModel(object):
     """
     @classmethod
     def default_params(cls):
+        tmp = [subdir for _, subdir, _ in os.walk('../dataoPreprocess/data')]
+        task_ids = [int(p) for l in tmp for p in l]
         return {
             'num_epochs': 3000,
             'patience': 25,
@@ -48,14 +50,11 @@ class BaseModel(object):
             'use_graph': True,
 
             'tie_fwd_bkwd':True,
-            # 'task_ids': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
-            'task_ids': [1003, 1001, 1002, 1000, 1004, 1007, 1009, 1021, 1022, 1030,
-                         1087, 1100, 1101, 1104, 1111, 1112, 1115, 1120, 1160, 1178,
-                         1202, 1212, 1216, 1261, 1330, 1334, 1335, 1337, 1406, 1408],
+            'task_ids': task_ids,
             'random_seed': 0,
 
-            'train_file': 'train_graphs.json',
-            'valid_file': 'valid_graphs.json'
+            'train_file': '../dataoPreprocess/data/train_graphs.json',
+            'valid_file': '../dataoPreprocess/data/valid_graphs.json'
         }
 
     def __init__(self, args):

@@ -28,7 +28,7 @@ def process_problem(problem_id, problem):
 
 
 # Init solution list
-with open('./problem_types.json', 'r', encoding='utf-8') as f:
+with open('./data/problem_types.json', 'r', encoding='utf-8') as f:
     problem_types = json.load(f)['problem_types']
 
 # travel problem

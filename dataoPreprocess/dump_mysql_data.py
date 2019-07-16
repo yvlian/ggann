@@ -33,7 +33,7 @@ sql = "select problem_id, description,`input`,`output` from problem"
 
 cursor.execute(sql)   # 执行sql语句
 problem_types = {}
-with open('problem_id_title') as f:
+with open('./data/problem_id_title') as f:
     problem_id_title = pd.read_csv(f,header=None)
     problem_id_title.rename(columns={0: 'id', 1: 'title'}, inplace=True)
 selected_problem_id = problem_id_title.values
@@ -51,7 +51,7 @@ for item in cursor.fetchall():
         selected_problem = selected_problem.append(temp, ignore_index=True)
 
     # save cpp file
-selected_problem.to_csv('selected_problem',index=False)
+selected_problem.to_csv('./data/selected_problem_30',index=False)
 # sql = "select p.problem_id, p.title, sc.solution_id, sc.source from problem as p, solution as s, source_code as sc" \
 #       " where s.language = 1 and s.result = 4 and s.problem_id = p.problem_id and s.solution_id = sc.solution_id"
 #
@@ -84,7 +84,7 @@ selected_problem.to_csv('selected_problem',index=False)
 # print("save all source files into ./src/ OK")
 #
 # # Record problems and their titles and AC source code index
-# with open('./problem_types.json', 'w', encoding='utf-8') as file:
+# with open('./data/problem_types.json', 'w', encoding='utf-8') as file:
 #     file.write(json.dumps({"problem_types": problem_types}, ensure_ascii=False))
 # print("create problem_types.json OK")
 

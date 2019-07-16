@@ -6,7 +6,7 @@ import re
 
 
 class ASTGraph:
-    __type_file_path = './ast_types.json'
+    __type_file_path = './data/ast_types.json'
     __ast_file_path = ''
 
     __index = None

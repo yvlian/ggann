@@ -1,15 +1,12 @@
 import json
 import glob
 import os
-import pandas as pd
-from scipy.sparse import csr_matrix
 
-
-with open('./valid_idx.json', 'r', encoding='utf-8') as vif:
+with open('./data/valid_idx.json', 'r', encoding='utf-8') as vif:
     valid_idx = json.load(vif)['valid_idxs']
 train_graphs = []
 valid_graphs = []
-with open('tf_idf_vector.txt','r') as f:
+with open('./data/tf_idf_vector.txt','r') as f:
     targets = json.load(f)
 for graph_path in glob.glob('./graph/*.graph'):
 
@@ -32,8 +29,8 @@ for graph_path in glob.glob('./graph/*.graph'):
     else:
         train_graphs.append({"targets": target, "graph": edges, "node_features": nodes})
 
-with open('../GGANN/train_graphs.json', 'w', encoding='utf-8') as tf:
+with open('./data/train_graphs.json', 'w', encoding='utf-8') as tf:
     json.dump(train_graphs, tf)
 
-with open('../GGANN/valid_graphs.json', 'w', encoding='utf-8') as vf:
+with open('./data/valid_graphs.json', 'w', encoding='utf-8') as vf:
     json.dump(valid_graphs, vf)

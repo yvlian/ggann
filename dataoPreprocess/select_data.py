@@ -6,7 +6,7 @@ import shutil
     1. 创建题目-代码的文件夹:./data/problem_id/
     2. 将代码文件./ast/solution_idt.ast复制进入题目-代码文件夹
 """
-with open('./problem_types.json', 'r', encoding='utf-8') as f:
+with open('./data/problem_types.json', 'r', encoding='utf-8') as f:
     problem_types = json.load(f)['problem_types']
 
 for item in problem_types:
