@@ -387,7 +387,7 @@ class Model(BaseModel):
             processed_graphs.append({"adjacency_lists": adjacency_lists,
                                      "num_incoming_edge_per_type": num_incoming_edge_per_type,
                                      "init": d["node_features"],
-                                     "labels": [d["targets"][task_id][0] for task_id in self.params['task_ids']]})
+                                     "labels": d["targets"][0]})
 
         if is_training_data:
             # 训练数据随机打乱，使得训练效果更好

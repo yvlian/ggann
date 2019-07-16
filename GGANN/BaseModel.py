@@ -48,7 +48,10 @@ class BaseModel(object):
             'use_graph': True,
 
             'tie_fwd_bkwd':True,
-            'task_ids': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+            # 'task_ids': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+            'task_ids': [1003, 1001, 1002, 1000, 1004, 1007, 1009, 1021, 1022, 1030,
+                         1087, 1100, 1101, 1104, 1111, 1112, 1115, 1120, 1160, 1178,
+                         1202, 1212, 1216, 1261, 1330, 1334, 1335, 1337, 1406, 1408],
             'random_seed': 0,
 
             'train_file': 'train_graphs.json',
@@ -138,7 +141,7 @@ class BaseModel(object):
         # 统计数据中一些信息
         num_fwd_edge_types = 0
         for i, g in enumerate(data):
-            # 图中顶点的ont-hot编码 #Todo  update node encode method
+            # 图中顶点的ont-hot编码
             data[i]['node_features'] = get_ont_hot(g['node_features'])
             # 最大顶点编号
             self.max_num_vertices = max(self.max_num_vertices, max([v for e in g['graph'] for v in [e[0], e[2]]]))
@@ -249,7 +252,7 @@ class BaseModel(object):
     def run_epoch(self, epoch_name: str, data, is_training: bool):
 
         loss = 0
-        accuracies = np.zeros(shape=(10,))
+        accuracies = np.zeros(shape=(len(self.params['task_ids']),))
         accuracy_ops = [self.ops['accuracy_task%i' % task_id] for task_id in self.params['task_ids']]
         start_time = time.time()
         processed_graphs = 0

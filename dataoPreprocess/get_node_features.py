@@ -26,11 +26,11 @@ problem['description'] = problem['description'].apply(tknzr.tokenize)
 problem['description'] = problem['description'].apply(lambda x:' '.join([english_stemmer.stem(s.lower()) for s in x]))
 vector = vectorizer.fit_transform(problem['description'].values)
 X = vector.toarray()
-pca = PCA(n_components=29)
+pca = PCA(n_components=30)
 newX = pca.fit_transform(X)
 to_save = dict()
 for i in range(problem.shape[0]):
-    to_save[str(problem['id'][i])] = X[i].reshape(1,-1).tolist()
+    to_save[str(problem['id'][i])] = newX[i].reshape(1,-1).tolist()
 js = json.dumps(to_save)
 with open('tf_idf_vector.txt','w') as f:
     f.write(js)

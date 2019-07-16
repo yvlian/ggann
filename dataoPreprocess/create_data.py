@@ -32,8 +32,8 @@ for graph_path in glob.glob('./graph/*.graph'):
     else:
         train_graphs.append({"targets": target, "graph": edges, "node_features": nodes})
 
-with open('./train_graphs.json', 'w', encoding='utf-8') as tf:
+with open('../GGANN/train_graphs.json', 'w', encoding='utf-8') as tf:
     json.dump(train_graphs, tf)
 
-with open('./valid_graphs.json', 'w', encoding='utf-8') as vf:
+with open('../GGANN/valid_graphs.json', 'w', encoding='utf-8') as vf:
     json.dump(valid_graphs, vf)
