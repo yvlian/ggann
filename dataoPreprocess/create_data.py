@@ -8,6 +8,8 @@ train_graphs = []
 valid_graphs = []
 with open('./data/tf_idf_vector.txt','r') as f:
     targets = json.load(f)
+tmp = [subdir for _, subdir, _ in os.walk('./data')]
+problem_ids = [p for l in tmp for p in l]
 for graph_path in glob.glob('./graph/*.graph'):
 
     # n = 0
@@ -25,9 +27,15 @@ for graph_path in glob.glob('./graph/*.graph'):
         edges = graph['graph_edges']
         nodes = graph['nodes_feature']
     if graph_path.split('/')[2].split('.')[0] in valid_idx:
-        valid_graphs.append({"targets": target, "graph": edges, "node_features": nodes})
+        valid_graphs.append({"targets": target,
+                             "graph": edges,
+                             "node_features": nodes,
+                             'task_id_index':problem_ids.index(problem_id)})
     else:
-        train_graphs.append({"targets": target, "graph": edges, "node_features": nodes})
+        train_graphs.append({"targets": target,
+                             "graph": edges,
+                             "node_features": nodes,
+                             'task_id_index':problem_ids.index(problem_id)})
 
 with open('./data/train_graphs.json', 'w', encoding='utf-8') as tf:
     json.dump(train_graphs, tf)

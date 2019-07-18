@@ -49,7 +49,7 @@ class Model(BaseModel):
             'graph_rnn_cell': 'GRU',  # GRU or RNN
             'graph_rnn_activation': 'tanh',  # tanh, ReLU
             'graph_state_dropout_keep_prob': 1.,
-            'task_sample_ratios': {},
+            'task_sample_ratios': 1.,
         })
         return params
 
@@ -359,12 +359,10 @@ class Model(BaseModel):
         # 累计所有节点成一个图表达
         num_nodes = tf.shape(gate_input, out_type=tf.int64)[0]
         graph_nodes = tf.SparseTensor(indices=self.placeholders['graph_nodes_list'],
-                                      values=tf.ones_like(self.placeholders['graph_nodes_list'][:, 0],
-                                                          dtype=tf.float32),
+                                      values=tf.ones_like(self.placeholders['graph_nodes_list'][:, 0],dtype=tf.float32),
                                       dense_shape=[self.placeholders['num_graphs'], num_nodes])
         # 返回图分类的类别[0,1]
-        return tf.nn.sigmoid(tf.squeeze(tf.sparse_tensor_dense_matmul(graph_nodes, gated_outputs), axis=[-1])), \
-               tf.nn.sigmoid(regression_gate(gate_input))
+        return tf.sparse_tensor_dense_matmul(graph_nodes, gated_outputs)
 
     def process_raw_graphs(self, raw_data: Sequence[Any], is_training_data: bool) -> Any:
         # 数据预处理:  将json文件数据转化成GNN模型输入数据processed_graphs
@@ -387,14 +385,15 @@ class Model(BaseModel):
             processed_graphs.append({"adjacency_lists": adjacency_lists,
                                      "num_incoming_edge_per_type": num_incoming_edge_per_type,
                                      "init": d["node_features"],
-                                     "labels": d["targets"][0]})
+                                     "labels": d["targets"][0],
+                                     'task_id_index':d['task_id_index']})
 
         if is_training_data:
             # 训练数据随机打乱，使得训练效果更好
             np.random.shuffle(processed_graphs)
             # 控制训练数据大小
             for task_id in self.params['task_ids']:
-                task_sample_ratio = self.params['task_sample_ratios'].get(str(task_id))
+                task_sample_ratio = self.params['task_sample_ratios']
                 if task_sample_ratio is not None:
                     ex_to_sample = int(len(processed_graphs) * task_sample_ratio)
                     for ex_id in range(ex_to_sample, len(processed_graphs)):
@@ -490,6 +489,7 @@ class Model(BaseModel):
             batch_num_incoming_edges_per_type = []
             # list(tuple)   [(batch中图编号,batch中节点编号)]
             batch_graph_nodes_list = []
+            task_id_index_list = []
             # 记录batch中节点数目
             node_offset = 0
 
@@ -517,6 +517,7 @@ class Model(BaseModel):
                                          'constant')
                 # 将cur_graph节点初始化向量元素添加进batch_node_features数据容器
                 batch_node_features.extend(padded_features)
+                task_id_index_list.append(cur_graph['task_id_index'])
                 """
                    将(cur_graph在batch中图数据编号，cur_graph节点在batch中的节点编号）记录添加进batch_graph_nodes_list
                        1. cur_graph在batch中图数据编号：通过累加计数得到num_graphs_in_batch
@@ -584,6 +585,8 @@ class Model(BaseModel):
                 self.placeholders['target_mask']: np.transpose(batch_target_task_mask, axes=[1, 0]),
                 self.placeholders['num_graphs']: num_graphs_in_batch,
                 self.placeholders['graph_state_keep_prob']: dropout_keep_prob,
+                self.placeholders['task_id_index']: task_id_index_list,
+                self.placeholders['task_target_values']: np.transpose(np.array(self.params['task_target_values'])),
             }
 
             # Merge adjacency lists and information about incoming nodes:

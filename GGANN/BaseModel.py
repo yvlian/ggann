@@ -38,6 +38,11 @@ class BaseModel(object):
     def default_params(cls):
         tmp = [subdir for _, subdir, _ in os.walk('../dataoPreprocess/data')]
         task_ids = [int(p) for l in tmp for p in l]
+        with open('../dataoPreprocess/data/tf_idf_vector.txt', 'r') as f:
+            targets = json.load(f)
+        task_target_values = []
+        for id in task_ids:
+            task_target_values.append(targets[str(id)][0])
         return {
             'num_epochs': 3000,
             'patience': 25,
@@ -51,6 +56,8 @@ class BaseModel(object):
 
             'tie_fwd_bkwd':True,
             'task_ids': task_ids,
+            'task_target_values': task_target_values,
+            'target_value_dim': [np.shape(task_target_values[0])[0],None],
             'random_seed': 0,
 
             'train_file': '../dataoPreprocess/data/train_graphs.json',
@@ -161,13 +168,16 @@ class BaseModel(object):
         raise Exception("Models have to implement process_raw_graphs!")
 
     def make_model(self):
-        self.placeholders['target_values'] = tf.placeholder(tf.float32, [len(self.params['task_ids']), None],
+        self.placeholders['target_values'] = tf.placeholder(tf.float32, self.params['target_value_dim'],
                                                             name='target_values')
-        self.placeholders['target_mask'] = tf.placeholder(tf.float32, [len(self.params['task_ids']), None],
+        self.placeholders['target_mask'] = tf.placeholder(tf.float32, self.params['target_value_dim'],
                                                           name='target_mask')
         self.placeholders['num_graphs'] = tf.placeholder(tf.int64, [], name='num_graphs')
         self.placeholders['out_layer_dropout_keep_prob'] = tf.placeholder(tf.float32, [],
                                                                           name='out_layer_dropout_keep_prob')
+        self.placeholders['task_target_values'] = tf.placeholder(
+            tf.float32, self.params['target_value_dim'],name='task_target_values')
+        self.placeholders['task_id_index'] = tf.placeholder(tf.int64, [None], name='task_id_index')
 
         with tf.variable_scope("graph_model"):
             self.prepare_specific_graph_model()
@@ -177,41 +187,36 @@ class BaseModel(object):
             else:
                 self.ops['final_node_representations'] = tf.zeros_like(self.placeholders['initial_node_representation'])
 
-        self.ops['losses'] = []
+        with tf.variable_scope("regression_gate"):
+            """
+                增加全连接层 + relu
+                regression_gate_task_i:  (输入2*h_dim,  输出1)
+                regression_transform_task_i:   (输入h_dim,输出1)
+            """
+            self.weights['regression_gate'] = MLP(2 * self.params['hidden_size'], self.params['target_value_dim'][0],
+                                                  [], self.placeholders['out_layer_dropout_keep_prob'])
+        with tf.variable_scope("regression"):
+            self.weights['regression_transform'] = MLP(self.params['hidden_size'], self.params['target_value_dim'][0],
+                                                       [], self.placeholders['out_layer_dropout_keep_prob'])
+        computed_values = self.gated_regression(self.ops['final_node_representations'],#(graph_num,taget_value_dim)
+                                                self.weights['regression_gate'],
+                                                self.weights['regression_transform'])
 
-        # 针对每个任务
-        for (internal_id, task_id) in enumerate(self.params['task_ids']):
-            with tf.variable_scope("out_layer_task%i" % task_id):
-                with tf.variable_scope("regression_gate"):
-                    """
-                        增加全连接层 + relu
-                        regression_gate_task_i:  (输入2*h_dim,  输出1)
-                        regression_transform_task_i:   (输入h_dim,输出1)
-                    """
-                    self.weights['regression_gate_task%i' % task_id] = MLP(2 * self.params['hidden_size'], 1, [],
-                                                                           self.placeholders[
-                                                                               'out_layer_dropout_keep_prob'])
-                with tf.variable_scope("regression"):
-                    self.weights['regression_transform_task%i' % task_id] = MLP(self.params['hidden_size'], 1, [],
-                                                                                self.placeholders[
-                                                                                    'out_layer_dropout_keep_prob'])
-                computed_values, sigmoid_node_in_graph = self.gated_regression(self.ops['final_node_representations'],
-                                                         self.weights['regression_gate_task%i' % task_id],
-                                                         self.weights['regression_transform_task%i' % task_id])
+        diff = tf.transpose(computed_values) - self.placeholders['target_values']
+        task_target_values = self.placeholders['task_target_values'] #(taget_value_dim,task_num)
+        consine = tf.div(tf.matmul(computed_values,task_target_values),tf.matmul(tf.sqrt(tf.reshape(tf.reduce_sum(computed_values,axis=1),(-1,1))),tf.sqrt(tf.reshape(tf.reduce_sum(task_target_values,axis=0),(1,-1)))))
+        cal_task_id = tf.argmax(consine,axis=1)#(graph_num,)
+        right_class_num = tf.reduce_sum(tf.cast(tf.equal(cal_task_id-self.placeholders['task_id_index'],0),tf.int64))
+        # task_target_mask = self.placeholders['target_mask'] #because the task_sample_ratios is 1,don't use task_target_mask
+        # task_target_num = tf.reduce_sum(task_target_mask) + SMALL_NUMBER
+        # Make out unused values
+        # diff = diff * task_target_mask
+        self.ops['accuracy'] = right_class_num/self.placeholders['num_graphs']
 
-                diff = computed_values - self.placeholders['target_values'][internal_id, :]
-                task_target_mask = self.placeholders['target_mask'][internal_id, :]
-                task_target_num = tf.reduce_sum(task_target_mask) + SMALL_NUMBER
-                # Make out unused values
-                diff = diff * task_target_mask
-                self.ops['accuracy_task%i' % task_id] = tf.reduce_sum(tf.abs(tf.round(tf.abs(diff)) - 1))
-
-                task_loss = tf.reduce_sum(0.5 * tf.square(diff)) / task_target_num
-                # Normalise loss to account for fewer task-specific examples in batch:
-                task_loss = task_loss * (1.0 / (self.params['task_sample_ratios'].get(task_id) or 1.0))
-                self.ops['losses'].append(task_loss)
-                self.ops['sigmoid_node_in_graph'] = sigmoid_node_in_graph
-        self.ops['loss'] = tf.reduce_sum(self.ops['losses'])
+        batch_loss = tf.reduce_sum(0.5 * tf.square(diff),axis=0)
+        # Normalise loss to account for fewer task-specific examples in batch:
+        batch_loss = batch_loss * (1.0 / (self.params['task_sample_ratios'] or 1.0))
+        self.ops['loss'] = tf.reduce_sum(batch_loss)
 
     def make_train_step(self):
         trainable_vars = self.sess.graph.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
@@ -251,8 +256,7 @@ class BaseModel(object):
     def run_epoch(self, epoch_name: str, data, is_training: bool):
 
         loss = 0
-        accuracies = np.zeros(shape=(len(self.params['task_ids']),))
-        accuracy_ops = [self.ops['accuracy_task%i' % task_id] for task_id in self.params['task_ids']]
+        accuracies = 0
         start_time = time.time()
         processed_graphs = 0
         batch_iterator = ThreadIterator(self.make_minibatch_iterator(data, is_training), max_queue_size=5)
@@ -262,19 +266,18 @@ class BaseModel(object):
             if is_training:
                 batch_data[self.placeholders['out_layer_dropout_keep_prob']] = self.params[
                     'out_layer_dropout_keep_prob']
-                fetch_list = [self.ops['loss'], accuracy_ops, self.ops['train_step']]
+                fetch_list = [self.ops['loss'], self.ops['accuracy'], self.ops['train_step']]
             else:
                 batch_data[self.placeholders['out_layer_dropout_keep_prob']] = 1.0
-                fetch_list = [self.ops['loss'], accuracy_ops]
+                fetch_list = [self.ops['loss'], self.ops['accuracy']]
 
             fetch_list.append(self.ops['final_node_representations'])
-            fetch_list.append(self.ops['sigmoid_node_in_graph'])
 
             result = self.sess.run(fetch_list, feed_dict=batch_data)
 
-            (batch_loss, batch_accuracies, final_node_representations, sigmoid_in_graph) = (result[0], result[1], result[2], result[3])
+            (batch_loss, batch_accuracies, final_node_representations) = (result[0], result[1], result[2])
 
-            loss += batch_loss * num_graphs
+            loss += batch_loss
             accuracies += batch_accuracies
             print("Running %s, batch %i (has %i graphs). Loss so far: %.4f" % (epoch_name,
                                                                                step,
@@ -286,58 +289,52 @@ class BaseModel(object):
         loss = loss / processed_graphs
         # error_ratios = accuracies / chemical_accuracies[self.params["task_ids"]]
         instance_per_sec = processed_graphs / (time.time() - start_time)
-        return loss, accuracies, instance_per_sec, final_node_representations, sigmoid_in_graph
+        return loss, accuracies, instance_per_sec, final_node_representations
 
     def train(self):
         log_to_save = []
         total_time_start = time.time()
         with self.graph.as_default():
             if self.args.get('--restore') is not None:
-                _, valid_accs, _, final_nodes_representations, sigmoid_in_graph = self.run_epoch("Resumed (validation)", self.valid_data, False)
-                best_val_acc = np.sum(valid_accs)
+                _, valid_acc, _, final_nodes_representations = self.run_epoch("Resumed (validation)", self.valid_data, False)
+                best_val_acc = np.sum(valid_acc)
                 best_val_acc_epoch = 0
-                print("\r\x1b[KResumed operation, initial cum. val. acc: %.5f" % best_val_acc)
             else:
                 (best_val_acc, best_val_acc_epoch) = (float("+inf"), 0)
             for epoch in range(1, self.params['num_epochs'] + 1):
                 print("== Epoch %i" % epoch)
-                train_loss, train_accs, train_speed, train_final_nodes_representations, train_sigmoid_in_graph = self.run_epoch("epoch %i (training)" % epoch,
-                                                                     self.train_data, True)
+                train_loss, train_acc, train_speed, train_final_nodes_representations = \
+                    self.run_epoch("epoch %i (training)" % epoch,self.train_data, True)
                 print("compare")
-                accs_str = " ".join(["%i:%.5f" % (id, acc) for (id, acc) in zip(self.params['task_ids'], train_accs)])
                 # errs_str = " ".join(["%i:%.5f" % (id, err) for (id, err) in zip(self.params['task_ids'], train_errs)])
                 print("\r\x1b[K Train: loss: %.5f | acc: %s | instances/sec: %.2f" % (train_loss,
-                                                                                      accs_str,
+                                                                                      train_acc,
                                                                                       train_speed))
-                valid_loss, valid_accs, valid_speed, final_nodes_representations, sigmoid_in_graph = self.run_epoch("epoch %i (validation)" % epoch,
-                                                                     self.valid_data, False)
-                accs_str = " ".join(["%i:%.5f" % (id, acc) for (id, acc) in zip(self.params['task_ids'], valid_accs)])
+                valid_loss, valid_acc, valid_speed, final_nodes_representations = \
+                    self.run_epoch("epoch %i (validation)" % epoch,self.valid_data, False)
                 # errs_str = " ".join(["%i:%.5f" % (id, err) for (id, err) in zip(self.params['task_ids'], valid_errs)])
                 print("\r\x1b[K Valid: loss: %.5f | acc: %s | instances/sec: %.2f" % (valid_loss,
-                                                                                      accs_str,
+                                                                                      valid_acc,
                                                                                       valid_speed))
 
-                print("sigmoid in graph", sigmoid_in_graph.shape)
                 print("fianl_nodes_representations", final_nodes_representations.shape)
 
                 epoch_time = time.time() - total_time_start
                 log_entry = {
                     'epoch': epoch,
                     'time': epoch_time,
-                    'train_results': (train_loss, train_accs.tolist(), train_speed),
-                    'valid_results': (valid_loss, valid_accs.tolist(), valid_speed),
+                    'train_results': (train_loss, train_acc, train_speed),
+                    'valid_results': (valid_loss, valid_acc, valid_speed),
                 }
                 log_to_save.append(log_entry)
                 with open(self.log_file, 'w') as f:
                     json.dump(log_to_save, f, indent=4)
 
-                val_acc = np.sum(valid_accs)
-
-                if val_acc > best_val_acc:
+                if valid_acc > best_val_acc:
                     self.save_model(self.best_model_file)
                     print("  (Best epoch so far, cum. val. acc decreased to %.5f from %.5f. Saving to '%s')" % (
-                                val_acc, best_val_acc, self.best_model_file))
-                    best_val_acc = val_acc
+                                valid_acc, best_val_acc, self.best_model_file))
+                    best_val_acc = valid_acc
                     best_val_acc_epoch = epoch
 
                 elif epoch - best_val_acc_epoch >= self.params['patience']:
@@ -349,7 +346,6 @@ class BaseModel(object):
                     if final_nodes_representations is not None:
                         np.save("nodes%i.npy" % epoch, final_nodes_representations)
 
-                    np.save("graph.npy", sigmoid_in_graph)
                     break
 
     def save_model(self, path: str) -> None:
