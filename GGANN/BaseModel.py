@@ -45,7 +45,7 @@ class BaseModel(object):
             task_target_values.append(targets[str(id)][0])
         return {
             'num_epochs': 3000,
-            'patience': 25,
+            'patience': 250,
             'learning_rate': 0.001,
             'clamp_gradient_norm': 1.0,
             'out_layer_dropout_keep_prob': 1.0,
@@ -202,18 +202,33 @@ class BaseModel(object):
                                                 self.weights['regression_gate'],
                                                 self.weights['regression_transform'])
 
-        diff = tf.transpose(computed_values) - self.placeholders['target_values']
         task_target_values = self.placeholders['task_target_values'] #(taget_value_dim,task_num)
-        consine = tf.div(tf.matmul(computed_values,task_target_values),tf.matmul(tf.sqrt(tf.reshape(tf.reduce_sum(computed_values,axis=1),(-1,1))),tf.sqrt(tf.reshape(tf.reduce_sum(task_target_values,axis=0),(1,-1)))))
-        cal_task_id = tf.argmax(consine,axis=1)#(graph_num,)
+        cos = tf.div(tf.matmul(computed_values,task_target_values),
+                     tf.matmul(
+                         tf.sqrt(tf.reshape(tf.reduce_sum(tf.square(computed_values),axis=1),(-1,1))),
+                         tf.sqrt(tf.reshape(tf.reduce_sum(tf.square(task_target_values),axis=0),(1,-1)))))
+        self.ops['computed_values'] = computed_values
+        self.ops['task_target_values'] = task_target_values
+        cal_task_id = tf.argmax(cos,axis=1)#(graph_num,)
+        self.ops['cal_task_id'] = cal_task_id
         right_class_num = tf.reduce_sum(tf.cast(tf.equal(cal_task_id-self.placeholders['task_id_index'],0),tf.int64))
         # task_target_mask = self.placeholders['target_mask'] #because the task_sample_ratios is 1,don't use task_target_mask
         # task_target_num = tf.reduce_sum(task_target_mask) + SMALL_NUMBER
         # Make out unused values
         # diff = diff * task_target_mask
-        self.ops['accuracy'] = right_class_num/self.placeholders['num_graphs']
+        self.ops['accuracy'] = right_class_num
+        intra_diff = tf.reduce_sum(tf.square(tf.transpose(computed_values) - self.placeholders['target_values']),axis=0)
+        inter_diff = tf.reduce_sum(
+            tf.square(tf.reshape(computed_values, (-1, self.params['target_value_dim'][0], 1)) - task_target_values),
+            axis=[1, 2])
 
-        batch_loss = tf.reduce_sum(0.5 * tf.square(diff),axis=0)
+        batch_loss = tf.div(intra_diff,inter_diff)
+        # target_values = self.placeholders['target_values']
+        # batch_loss = -1 * tf.div(tf.matmul(computed_values,target_values),
+        #              tf.matmul(
+        #                  tf.sqrt(tf.reshape(tf.reduce_sum(tf.square(computed_values),axis=1),(-1,1))),
+        #                  tf.sqrt(tf.reshape(tf.reduce_sum(tf.square(target_values),axis=0),(1,-1)))))
+
         # Normalise loss to account for fewer task-specific examples in batch:
         batch_loss = batch_loss * (1.0 / (self.params['task_sample_ratios'] or 1.0))
         self.ops['loss'] = tf.reduce_sum(batch_loss)
@@ -267,16 +282,24 @@ class BaseModel(object):
                 batch_data[self.placeholders['out_layer_dropout_keep_prob']] = self.params[
                     'out_layer_dropout_keep_prob']
                 fetch_list = [self.ops['loss'], self.ops['accuracy'], self.ops['train_step']]
+                # fetch_list = [self.ops['loss'],
+                #               self.ops['accuracy'],
+                #               self.ops['computed_values'],
+                #               self.ops['task_target_values'],
+                #               self.ops['cal_task_id'],
+                #               self.ops['train_step']]
             else:
                 batch_data[self.placeholders['out_layer_dropout_keep_prob']] = 1.0
                 fetch_list = [self.ops['loss'], self.ops['accuracy']]
+                # fetch_list = [self.ops['loss'], self.ops['accuracy'], self.ops['cal_task_id']]
 
             fetch_list.append(self.ops['final_node_representations'])
 
             result = self.sess.run(fetch_list, feed_dict=batch_data)
 
             (batch_loss, batch_accuracies, final_node_representations) = (result[0], result[1], result[2])
-
+            #(batch_loss, batch_accuracies,computed_values,task_target_values,cal_task_id, final_node_representations) = \
+             #   (result[0], result[1], result[2], result[3], result[4], result[5])
             loss += batch_loss
             accuracies += batch_accuracies
             print("Running %s, batch %i (has %i graphs). Loss so far: %.4f" % (epoch_name,
