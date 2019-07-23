@@ -9,7 +9,7 @@ import json
 import numpy as np
 import pickle
 import random
-
+import glob
 from MLP import MLP
 from inits import SMALL_NUMBER
 from ThreadedIterator import  ThreadIterator
@@ -36,13 +36,10 @@ class BaseModel(object):
     """
     @classmethod
     def default_params(cls):
-        tmp = [subdir for _, subdir, _ in os.walk('../dataoPreprocess/data')]
-        task_ids = [int(p) for l in tmp for p in l]
-        with open('../dataoPreprocess/data/tf_idf_vector.txt', 'r') as f:
-            targets = json.load(f)
+        task_ids = [int(path.split('/')[3]) for path in glob.glob('../dataoPreprocess/data/*/')]
         task_target_values = []
-        for id in task_ids:
-            task_target_values.append(targets[str(id)][0])
+        for i in range(len(task_ids)):
+            task_target_values.append([float(i == j) for j in range(len(task_ids))])
         return {
             'num_epochs': 3000,
             'patience': 250,
