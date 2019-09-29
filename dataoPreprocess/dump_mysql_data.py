@@ -7,6 +7,7 @@ import pymysql.cursors
 import json
 import pandas as pd
 from bs4 import BeautifulSoup
+import glob
 """
     -- 连接数据库配置
      1. 建立mysql数据库，导入acm.sql文件
@@ -17,7 +18,7 @@ connect = pymysql.Connect(
     host='localhost',    # mysql库存访问主机名  http://localhost:3306
     port=3306,           # mysql数据库端口
     user='root',         # mysql数据库登录账号
-    passwd='csu',        # mysql数据库登录密码
+    passwd='2191218696',        # mysql数据库登录密码
     db='acm',            # mysql数据库名
     charset='utf8')
 
@@ -33,10 +34,7 @@ sql = "select problem_id, description,`input`,`output` from problem"
 
 cursor.execute(sql)   # 执行sql语句
 problem_types = {}
-with open('./data/problem_id_title') as f:
-    problem_id_title = pd.read_csv(f,header=None)
-    problem_id_title.rename(columns={0: 'id', 1: 'title'}, inplace=True)
-selected_problem_id = problem_id_title.values
+problem_ids = [int(path.split('/')[2]) for path in glob.glob('./data/*/')]
 selected_problem = pd.DataFrame(columns=['id','description','input','output'])
 for item in cursor.fetchall():
 
@@ -45,13 +43,13 @@ for item in cursor.fetchall():
     input = BeautifulSoup(item[2],'html.parser').get_text().replace('\n',' ')
     output = BeautifulSoup(item[3],'html.parser').get_text().replace('\n',' ')
 
-    if problem_id in selected_problem_id:
+    if problem_id not in problem_ids:
         temp = pd.Series({'id':problem_id,"description": description,
                           "input": input,"output": output})
         selected_problem = selected_problem.append(temp, ignore_index=True)
 
     # save cpp file
-selected_problem.to_csv('./data/selected_problem_30',index=False)
+selected_problem.to_csv('./data/selected_problem',index=False)
 # sql = "select p.problem_id, p.title, sc.solution_id, sc.source from problem as p, solution as s, source_code as sc" \
 #       " where s.language = 1 and s.result = 4 and s.problem_id = p.problem_id and s.solution_id = sc.solution_id"
 #
